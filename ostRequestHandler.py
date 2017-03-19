@@ -1,6 +1,6 @@
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from urlparse import urlparse
-from mapper import RequestMapper
+from lustreLoadBalancer.mapper import RequestMapper
 import json
 import uuid
 
