@@ -2,7 +2,7 @@ import ns.core
 import ns.network
 import ns.internet
 import ns.point_to_point
-from ostLoadBalancer.mapper import RequestMapper
+from lustreLoadBalancer.mapper import RequestMapper
 
 NUM_OF_IO_RTR = 1
 NUM_OF_LNET_RTR = 4
