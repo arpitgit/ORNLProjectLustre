@@ -8,7 +8,10 @@ NUM_OF_IO_RTR = 1
 NUM_OF_LNET_RTR = 4
 NUM_OF_OSS_PER_RTR = 8
 NUM_OF_OST_PER_OSS = 7
-DISK_SPACE_PER_OST = 1048576		# 1 MB
+DISK_SPACE_PER_OST = 102400		# 100 kB
+P2P_LINK_DATA_RATE = "5Mbps"
+P2P_LINK_DELAY = "2ms"
+OUTPUT_PERIOD = 1
 
 class LustreSimulator:
 	def __init__(self):
@@ -20,6 +23,7 @@ class LustreSimulator:
 		self.ioRtrList = []
 		self.lnetRtrList = []
 		self.ostDict = {}
+		self.ostOutputFile = "OST_SIM_STATS.csv"
 		self.requestMapper = RequestMapper(self)
 		self._build_network_topology()
 
@@ -40,8 +44,8 @@ class LustreSimulator:
 			self.lnetRtrList.append(lnetRtr)
 
 		p2p = ns.point_to_point.PointToPointHelper()
-		p2p.SetDeviceAttribute("DataRate", ns.core.StringValue("5Mbps"))
-		p2p.SetChannelAttribute("Delay", ns.core.StringValue("2ms"))
+		p2p.SetDeviceAttribute("DataRate", ns.core.StringValue(P2P_LINK_DATA_RATE))
+		p2p.SetChannelAttribute("Delay", ns.core.StringValue(P2P_LINK_DELAY))
 
 		for i, ioRtr in enumerate(self.ioRtrList):
 			for j, lnetRtr in enumerate(self.lnetRtrList):
@@ -83,20 +87,44 @@ class LustreSimulator:
 			for ostName in ostNameList:
 				ost = self.ostDict[ostName]
 				app.ioRtr.write_to_ost(stripeSize, ost)
+
 		for event in app.eventList:
 			ns.core.Simulator.Schedule(ns.core.Seconds(event.time), event_handler, event.size, event.stripeCount)
+
+	def _schedule_output_events(self):
+		def event_handler():
+			ostUsedSpaceList = []
+			for lnetRtr in self.lnetRtrList:
+				for oss in lnetRtr.ossList:
+					ostUsedSpaceList += [ost.usedDiskSpace for ost in oss.ostList]
+			ostOutputLine = ','.join(map(str, ostUsedSpaceList))
+			write_output_to_file(ostOutputLine)
+			ns.core.Simulator.Schedule(ns.core.Seconds(OUTPUT_PERIOD), event_handler)
+
+		def write_output_to_file(ostOutputLine):
+			self.ostOutputFilePtr.write(ostOutputLine + '\n')
+
+		ns.core.Simulator.Schedule(ns.core.Seconds(OUTPUT_PERIOD), event_handler)
+
+	def _open_output_file_ptrs(self):
+		self.ostOutputFilePtr = open(self.ostOutputFile, 'w')
+
+	def _close_output_file_ptrs(self):
+		self.ostOutputFilePtr.close()
 
 	def handle_apps(self, appList):
 		appList = appList[:self.numIORtr]
 		for i, app in enumerate(appList):
 			app.update_io_rtr(self.ioRtrList[i])
 			self._schedule_app_events(app)
+		self._schedule_output_events()
 
 	def run(self, stopTime):
+		self._open_output_file_ptrs()
 		ns.core.Simulator.Stop(ns.core.Seconds(stopTime))
 		ns.core.Simulator.Run()
 		ns.core.Simulator.Destroy()
-
+		self._close_output_file_ptrs()
 		
 class IORouter(object):
 	def __init__(self, index, stack):
@@ -127,6 +155,7 @@ class LnetRouter(object):
 	def update_device(self, device):
 		def receive_callback(device, packet, protocol, sender, receiver, packetType):
 			self.load += self.loadPerOSS
+
 		self.device = device
 		self.device.SetPromiscReceiveCallback(receive_callback)
 
