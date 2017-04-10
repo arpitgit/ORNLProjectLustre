@@ -1,5 +1,5 @@
 # ORNLProjectLustre
-Requirements: Python 2.7, NS3 python bindings (for simulator)
+Requirements: Python 2.7, NetworkX python library, NS3 python bindings (for simulator)
 
 At client side, the OST requester module (ostRequesterClient.py) handles the requests 
 and sends them to the server (ostRequestHandler.py) as HTTP GET requests.
