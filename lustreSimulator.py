@@ -2,16 +2,17 @@ import ns.core
 import ns.network
 import ns.internet
 import ns.point_to_point
-from lustreLoadBalancer.mapper import RequestMapper
+from lustreLoadBalancer.mapper import RequestMapper, RoundRobinRequestMapper, RandomRequestMapper
 
 NUM_OF_IO_RTR = 1
 NUM_OF_LNET_RTR = 4
 NUM_OF_OSS_PER_RTR = 8
 NUM_OF_OST_PER_OSS = 7
-DISK_SPACE_PER_OST = 102400		# 100 kB
+DISK_SPACE_PER_OST = 104857600		# 100 kB
 P2P_LINK_DATA_RATE = "5Mbps"
 P2P_LINK_DELAY = "2ms"
-OUTPUT_PERIOD = 1
+OUTPUT_PERIOD = 0.001
+PRINT_PERIOD = 1.0
 
 class LustreSimulator:
 	def __init__(self):
@@ -23,8 +24,10 @@ class LustreSimulator:
 		self.ioRtrList = []
 		self.lnetRtrList = []
 		self.ostDict = {}
-		self.ostOutputFile = "OST_SIM_STATS.csv"
+		self.ostOutputFile = "OST_SIM_STATS_FIN_MINCOST-3_FULL.csv"
 		self.requestMapper = RequestMapper(self)
+		#self.requestMapper = RoundRobinRequestMapper(self)
+		#self.requestMapper = RandomRequestMapper(self)
 		self._build_network_topology()
 
 	def _build_network_topology(self):
@@ -93,6 +96,41 @@ class LustreSimulator:
 
 	def _schedule_output_events(self):
 		def event_handler():
+			"""
+			tolerance = 0.000001
+			ostUsedSpaceList = []
+			ossCpuPercent = []
+			lnetLoad = [lnetRtr.load for lnetRtr in self.lnetRtrList]
+			for lnetRtr in self.lnetRtrList:
+				ossCpuPercent += [oss.cpuPercent for oss in lnetRtr.ossList]
+				for oss in lnetRtr.ossList:
+					ostUsedSpaceList += [ost.usedDiskSpace for ost in oss.ostList]
+			meanOSTLoad = float(sum(ostUsedSpaceList))/len(ostUsedSpaceList)
+			maxOSTLoad = float(max(ostUsedSpaceList))
+			if meanOSTLoad < tolerance and maxOSTLoad < tolerance:
+				ostLoadMeasure = 1.0
+			elif meanOSTLoad < tolerance:
+				ostLoadMeasure = maxOSTLoad/tolerance
+			else:
+				ostLoadMeasure = maxOSTLoad/meanOSTLoad
+			meanOSSLoad = float(sum(ossCpuPercent))/len(ossCpuPercent)
+			maxOSSLoad = float(max(ossCpuPercent))
+			if meanOSSLoad < tolerance and maxOSSLoad < tolerance:
+				ossLoadMeasure = 1.0
+			elif meanOSSLoad < tolerance:
+				ossLoadMeasure = maxOSSLoad/tolerance
+			else:
+				ossLoadMeasure = maxOSSLoad/meanOSSLoad
+			meanLnetLoad = float(sum(lnetLoad))/len(lnetLoad)
+			maxLnetLoad = float(max(lnetLoad))
+			if meanLnetLoad < tolerance and maxLnetLoad < tolerance:
+				lnetLoadMeasure = 1.0
+			elif meanLnetLoad < tolerance:
+				lnetLoadMeasure = maxLnetLoad/0.001
+			else:
+				lnetLoadMeasure = maxLnetLoad/meanLnetLoad
+			ostOutputLine = ','.join(map(str, [ostLoadMeasure, ossLoadMeasure, lnetLoadMeasure]))
+			"""
 			ostUsedSpaceList = []
 			for lnetRtr in self.lnetRtrList:
 				for oss in lnetRtr.ossList:
@@ -101,10 +139,16 @@ class LustreSimulator:
 			write_output_to_file(ostOutputLine)
 			ns.core.Simulator.Schedule(ns.core.Seconds(OUTPUT_PERIOD), event_handler)
 
+		def print_event_handler():
+			#print "{0} - {1} - {2} - {3}".format(ns.core.Simulator.Now(), ostLoadMeasure, ossLoadMeasure, lnetLoadMeasure)
+			print ns.core.Simulator.Now()
+			ns.core.Simulator.Schedule(ns.core.Seconds(PRINT_PERIOD), print_event_handler)
+
 		def write_output_to_file(ostOutputLine):
 			self.ostOutputFilePtr.write(ostOutputLine + '\n')
 
 		ns.core.Simulator.Schedule(ns.core.Seconds(OUTPUT_PERIOD), event_handler)
+		ns.core.Simulator.Schedule(ns.core.Seconds(PRINT_PERIOD), print_event_handler)
 
 	def _open_output_file_ptrs(self):
 		self.ostOutputFilePtr = open(self.ostOutputFile, 'w')
@@ -209,15 +253,15 @@ class WriteEvent(object):
 		self.time = seconds
 
 class Application(object):
-	def __init__(self, id, traceFile):
+	def __init__(self, id, traceFile, runtime):
 		self.id = id
-		self.eventList = self._parse_trace(traceFile)
+		self.eventList = self._parse_trace(traceFile, runtime)
 		self.ioRtr = None
 
 	def update_io_rtr(self, ioRtr):
 		self.ioRtr = ioRtr
 
-	def _parse_trace(self, traceFile):
+	def _parse_trace(self, traceFile, runtime):
 		fptr = open(traceFile, 'r')
 		text = fptr.read()
 		lines = text.split("\n")
@@ -227,12 +271,18 @@ class Application(object):
 		eventList = []
 		for i in range(numReq):
 			line = lines[i]
-			timestamp, reqSize, stripeCount = map(int, line.split(" ")) 
+			elms = line.split(" ")
+			timestamp = float(elms[0])
+			if timestamp > float(runtime):
+				break
+			reqSize = int(elms[1]) 
+			stripeCount = int(elms[2])
 			eventList.append(WriteEvent(reqSize, stripeCount, timestamp))
 		return eventList
 
 if __name__ == '__main__':
-	app = Application(1, 'AppLog2.txt')
+	runtime = 200
+	app = Application(1, 'FinancialApp.txt', runtime)
 	simulator = LustreSimulator()
 	simulator.handle_apps([app])
-	simulator.run(400)
+	simulator.run(runtime)

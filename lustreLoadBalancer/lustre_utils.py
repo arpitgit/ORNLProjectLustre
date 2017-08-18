@@ -1,3 +1,4 @@
+COST_RESOLUTION = 1000000000
 
 class LustreModel(object):
 	def __init__(self, numOSS, numOSTPerOSS, ostDiskSpace):
@@ -34,10 +35,10 @@ class OSS(object):
 		return float(usedSpace)/totalSpace
 
 	def cost_to_reach(self):
-		return int(self.lnetLoad * 100)
+		return int(self.lnetLoad * COST_RESOLUTION)
 
 	def load(self):
-		return int((self.cpuWeight*self.cpuUsage + self.memWeight*self.mem_used())*100)
+		return int((self.cpuWeight*self.cpuUsage + self.memWeight*self.mem_used())*COST_RESOLUTION)
 
 	def update_stats(self, cpuUsage, lnetLoad):
 		self.cpuUsage = cpuUsage
@@ -57,7 +58,7 @@ class OST(object):
 		return int(self.totalDiskSpace - self.usedDiskSpace)/stripeSize
 
 	def cost(self):
-		return int(float(self.usedDiskSpace*100)/self.totalDiskSpace)
+		return int(float(self.usedDiskSpace*COST_RESOLUTION)/self.totalDiskSpace)
 
 	def update_stats(self, usedDiskSpace):
 		self.usedDiskSpace = usedDiskSpace
